@@ -1,0 +1,50 @@
+package main
+
+import (
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
+	"time"
+)
+
+func main() {
+	// 创建反向代理
+	proxy1 := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "192.168.207.182:42308",
+	})
+	proxy2 := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "192.168.207.182:22979",
+	})
+	proxy3 := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "192.168.207.182:24931",
+	})
+
+	// 创建HTTP服务器
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte("Hello , Hello"))
+	})
+
+	// 将反向代理和HTTP服务器绑定在一起
+	http.HandleFunc("/api1/", func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.Replace(r.URL.Path, "/api1/", "/", 1)
+		proxy1.ServeHTTP(w, r)
+	})
+	http.HandleFunc("/api2/", func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.Replace(r.URL.Path, "/api2/", "/", 1)
+		proxy2.ServeHTTP(w, r)
+	})
+	http.HandleFunc("/api3/", func(w http.ResponseWriter, r *http.Request) {
+		r.URL.Path = strings.Replace(r.URL.Path, "/api3/", "/", 1)
+		time.Sleep(10 * time.Second)
+		proxy3.ServeHTTP(w, r)
+	})
+
+	// 启动HTTP服务器
+	if err := http.ListenAndServe("localhost:8080", nil); err != nil {
+		panic(err)
+	}
+}
