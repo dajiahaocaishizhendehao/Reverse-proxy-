@@ -1,0 +1,61 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"strings"
+)
+
+func main() {
+
+	jupyterURL, err := url.Parse("http://proxy.aiserver.cn:31428")
+	if err != nil {
+		fmt.Println("解析 Jupyter URL 出错:", err)
+		return
+	}
+	vscode := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "192.168.207.182:42308",
+	})
+	tensorboard := httputil.NewSingleHostReverseProxy(&url.URL{
+		Scheme: "http",
+		Host:   "192.168.207.182:22979",
+	})
+
+	// 为服务创建反向代理
+	jupyterProxy := httputil.NewSingleHostReverseProxy(jupyterURL)
+
+	// 定义处理程序以根据路径确定要代理的服务
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		//w.Write([]byte("-----"))
+		path := r.URL.Path
+
+		// 如果请求的是 /jupyter，直接代理到 /jupyter
+		if strings.HasPrefix(path, "/jupyter") {
+			// 更新 Jupyter Notebook 的请求头
+			r.Host = jupyterURL.Host
+			jupyterProxy.ServeHTTP(w, r)
+			return
+		}
+		http.HandleFunc("/vscode/", func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = strings.Replace(r.URL.Path, "/vscode/", "/", 1)
+			vscode.ServeHTTP(w, r)
+		})
+		http.HandleFunc("/tensorboard/", func(w http.ResponseWriter, r *http.Request) {
+			r.URL.Path = strings.Replace(r.URL.Path, "/tensorboard/", "/", 1)
+			tensorboard.ServeHTTP(w, r)
+		})
+		// 如果路径不匹配任何代理规则，返回 "未找到" 错误
+		http.Error(w, "未找到", http.StatusNotFound)
+	})
+
+	// 启动反向代理服务器
+	port := 8080
+	fmt.Printf("在端口 %d 上启动反向代理...\n", port)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	if err != nil {
+		fmt.Println("启动服务器时出错:", err)
+	}
+}
